@@ -1,0 +1,8 @@
+prefix      = "demo-sec"
+location    = "francecentral"
+environment = "lab"
+vnet_cidr   = "10.0.0.0/16"
+
+# Ajouter uniquement les réseaux clients déjà connectés par VPN ou peering.
+# Cette variable ne crée ni VPN, ni peering, ni point d'entrée public.
+https_source_cidrs = []
