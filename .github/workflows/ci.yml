@@ -1,0 +1,61 @@
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.14.4
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize without Azure backend
+        run: terraform init -backend=false -lockfile=readonly
+
+      - name: Validate configuration
+        run: terraform validate -no-color
+
+      - name: Test network rules without Azure credentials
+        run: terraform test -no-color
+
+      - name: Install Trivy
+        env:
+          TRIVY_VERSION: "0.75.0"
+          TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+        run: |
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}" \
+            --output "${RUNNER_TEMP}/${archive}"
+          echo "${TRIVY_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check
+          mkdir -p "${RUNNER_TEMP}/trivy-bin"
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/trivy-bin" trivy
+          echo "${RUNNER_TEMP}/trivy-bin" >> "${GITHUB_PATH}"
+
+      - name: Scan Terraform configuration
+        run: trivy config --disable-telemetry --skip-version-check --severity HIGH,CRITICAL --exit-code 1 --skip-dirs .terraform .
